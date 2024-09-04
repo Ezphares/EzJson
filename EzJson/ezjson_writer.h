@@ -1,55 +1,38 @@
 #ifndef __EZJSON_H_INCLUDED__
 #define __EZJSON_H_INCLUDED__
 
-#ifdef EZJSON_NUMBER
-typedef EZJSON_NUMBER EzJSONNumber;
-#else
-typedef float EzJSONNumber;
-#endif // !EZJSON_NUMBER
-
-#ifdef EZJSON_BOOL
-typedef EZJSON_BOOL EzJSONBool;
-#else
-typedef _Bool EzJSONBool;
-#endif // !EZJSON_BOOL
-
 #ifndef EZJSON_WRITE_BUFFER_SIZE
 #define EZJSON_WRITE_BUFFER_SIZE 1024
-#endif
+#endif // !EZJSON_WRITER_STACK_SIZE
 
-#if defined(EZJSON_CHECKED_WRITE)
-#ifndef EZJSON_CHECKED_WRITE_STACK_SIZE
-#define EZJSON_CHECKED_WRITE_STACK_SIZE 8
-#endif
-#endif
+#ifndef EZJSON_WRITER_STACK_SIZE
+#define EZJSON_WRITER_STACK_SIZE 8
+#endif // !EZJSON_WRITER_STACK_SIZE
+
+#include "ezjson_common.h"
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif // __cplusplus
 
-    struct EzJSONReader
-    {
-        void (*onObjectBegin)(void *);
-        void (*onObjectEnd)(void *);
-        void (*onArrayBegin)(void *);
-        void (*onArrayEnd)(void *);
+    // struct EzJSONReader
+    //{
+    //     void (*onObjectBegin)(void *);
+    //     void (*onObjectEnd)(void *);
+    //     void (*onArrayBegin)(void *);
+    //     void (*onArrayEnd)(void *);
 
-        void (*onKey)(void *, const char *, unsigned);
+    //    void (*onKey)(void *, const char *, unsigned);
 
-        void (*onNull)(void *);
-        void (*onNumber)(void *, EzJSONNumber);
-        void (*onBool)(void *, EzJSONBool);
-        void (*onString)(void *, const char *, unsigned);
-        void (*onError)(void *);
+    //    void (*onNull)(void *);
+    //    void (*onNumber)(void *, EzJSONNumber);
+    //    void (*onBool)(void *, EzJSONBool);
+    //    void (*onString)(void *, const char *, unsigned);
+    //    void (*onError)(void *);
 
-        void *userdata;
-    };
-
-    // Char should be set to the next input. Return 0 on success, non-zero on
-    // error or EOF
-    typedef int (*EzJSONGetChar)(void *, char *);
-    int EzJSONParse(struct EzJSONReader *reader, EzJSONGetChar getChar);
+    //    void *userdata;
+    //};
 
     enum EzJSONWriteError
     {
@@ -75,7 +58,7 @@ extern "C"
             char buffer[EZJSON_WRITE_BUFFER_SIZE];
             unsigned bufferPos;
 #if defined(EZJSON_CHECKED_WRITE)
-            unsigned char stack[EZJSON_CHECKED_WRITE_STACK_SIZE];
+            unsigned char stack[EZJSON_WRITER_STACK_SIZE];
             int stacksize;
             int stackpos;
 #endif

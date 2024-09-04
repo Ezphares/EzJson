@@ -1,4 +1,5 @@
-#include "ezjson.h"
+#include "ezjson_parser.h"
+#include "ezjson_writer.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -76,20 +77,58 @@ int main()
                "  \"test2\": [1, -2.0, 0.1, 1e2, 1e-3]"
                "}";
 
-    struct EzJSONReader reader;
-    memset(&reader, 0, sizeof(struct EzJSONReader));
-    reader.userdata      = &test;
-    reader.onObjectBegin = &objB;
-    reader.onObjectEnd   = &objE;
-    reader.onArrayBegin  = &arrB;
-    reader.onArrayEnd    = &arrE;
-    reader.onKey         = &key;
-    reader.onNumber      = &number;
-    reader.onError       = &error;
+    struct EzJSONParserSettings settings = {0};
 
-    EzJSONParse(&reader, testGetChar);
+    settings.get_next_char = &testGetChar;
+    settings.userdata      = &test;
 
-    printf("\n\n");
+    struct EzJSONParser *parser = EzJSONParserCreate(&settings);
+    EzJSONParserNext(parser);
+
+    struct EzJSONToken *token;
+    while (token = EzJSONParserToken(parser))
+    {
+        switch (token->type)
+        {
+        case EZJ_TOKEN_OBJ_BEGIN:
+            printf("{\n");
+            break;
+        case EZJ_TOKEN_OBJ_END:
+            printf("}\n");
+            break;
+        case EZJ_TOKEN_ARR_BEGIN:
+            printf("[\n");
+            break;
+        case EZJ_TOKEN_ARR_END:
+            printf("]\n");
+            break;
+        case EZJ_TOKEN_SEQ_SEP:
+            printf(",\n");
+            break;
+        case EZJ_TOKEN_KV_SEP:
+            printf(":\n");
+            break;
+        case EZJ_TOKEN_OBJ_KEY:
+            printf("\"%.*s\"\n", token->data_text_length, token->data_text);
+            break;
+        case EZJ_TOKEN_STRING:
+            printf("\"%.*s\"\n", token->data_text_length, token->data_text);
+            break;
+        case EZJ_TOKEN_NUMBER:
+            printf("%f\n", token->data_number);
+            break;
+        case EZJ_TOKEN_BOOL:
+            printf("%d\n", token->data_bool);
+            break;
+        case EZJ_TOKEN_NULL:
+            printf("null\n");
+            break;
+        }
+
+        EzJSONParserNext(parser);
+    }
+
+    EzJSONParserDestroy(parser);
 
     struct EzJSONWriter writer;
     EzJSONInitWriter(&writer);
