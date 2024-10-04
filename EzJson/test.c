@@ -77,16 +77,18 @@ int main()
                "  \"test2\": [1, -2.0, 0.1, 1e2, 1e-3]"
                "}";
 
-    struct EzJSONParserSettings settings = {0};
+    struct EzJSONParser parser;
 
-    settings.get_next_char = &testGetChar;
-    settings.userdata      = &test;
+    parser.settings.allocate_memory = 0;
+    parser.settings.free_memory     = 0;
+    parser.settings.get_next_char   = &testGetChar;
+    parser.settings.userdata        = &test;
 
-    struct EzJSONParser *parser = EzJSONParserCreate(&settings);
-    EzJSONParserNext(parser);
+    EzJSONParserInit(&parser);
+    EzJSONParserNext(&parser);
 
     struct EzJSONToken *token;
-    while (token = EzJSONParserToken(parser))
+    while (token = EzJSONParserToken(&parser))
     {
         switch (token->type)
         {
@@ -125,14 +127,17 @@ int main()
             break;
         }
 
-        EzJSONParserNext(parser);
+        EzJSONParserNext(&parser);
     }
 
-    EzJSONParserDestroy(parser);
+    EzJSONParserDestroy(&parser);
 
     struct EzJSONWriter writer;
-    EzJSONInitWriter(&writer);
-    writer.userdata    = stdout;
+    writer.settings.allocate_memory = 0;
+    writer.settings.free_memory     = 0;
+    writer.settings.userdata        = stdout;
+    EzJSONWriterInit(&writer);
+
     writer.writeBuffer = &dump;
     writer.writeError  = &writeError;
 

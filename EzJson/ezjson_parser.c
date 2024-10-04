@@ -1,4 +1,5 @@
 #include "ezjson_parser.h"
+#include "ezjson_internal.h"
 
 #include <memory.h>
 #include <stdint.h>
@@ -8,10 +9,6 @@
 #ifndef EZJSON_PARSER_STACK_SIZE
 #define EZJSON_PARSER_STACK_SIZE 8
 #endif // !EZJSON_PARSER_STACK_SIZE
-
-#ifndef EZJSON_PARSER_INLINE_BUFFER
-#define EZJSON_PARSER_INLINE_BUFFER 128
-#endif // !EZJSON_INLINE_BUFFER
 
 #define CHECKED(stmt)                                                          \
     if ((stmt) != 0)                                                           \
@@ -31,33 +28,6 @@ enum EzJSONParserState
     EZ_PS_EXPECT_OBJ_KEY = (1 << 5),
     EZ_PS_EXPECT_EOF     = (1 << 6),
 
-};
-
-struct EzJSONParser
-{
-    struct EzJSONParserSettings settings;
-
-    char inlineBuffer[EZJSON_PARSER_STACK_SIZE];
-    unsigned bufferSize;
-    char *buffer;
-    unsigned bufferPos;
-
-    char inlineStack[EZJSON_PARSER_STACK_SIZE];
-    unsigned stackSize;
-    char *stack;
-    unsigned stackTop;
-
-    enum EzJSONParserState state;
-
-    struct EzJSONToken token;
-
-    char peeked;
-
-    char hasPeeked;
-    char hasToken;
-
-    unsigned line;
-    unsigned pos;
 };
 
 // Internal
@@ -143,82 +113,6 @@ void writeBuffer(struct EzJSONParser *parser, char c)
     if (parser->bufferPos >= parser->bufferSize)
         growBuffer(parser);
     parser->buffer[parser->bufferPos++] = c;
-}
-
-void freeStack(struct EzJSONParser *parser)
-{
-    if (parser->stackSize != EZJSON_PARSER_STACK_SIZE)
-    {
-        if (parser->settings.free_memory)
-        {
-            parser->settings.free_memory(
-                parser->settings.userdata, parser->stack, parser->stackSize);
-        }
-        else
-        {
-            free(parser->stack);
-        }
-        parser->stack     = parser->inlineStack;
-        parser->stackSize = EZJSON_PARSER_STACK_SIZE;
-    }
-}
-
-void growStack(struct EzJSONParser *parser)
-{
-    const unsigned newSize = parser->stackSize * 2u;
-    char *tmp;
-    if (parser->settings.allocate_memory)
-    {
-        tmp = parser->settings.allocate_memory(
-            parser->settings.userdata, newSize);
-    }
-    else
-    {
-        tmp = (char *)malloc(newSize);
-    }
-    memcpy(tmp, parser->stack, parser->stackSize);
-    freeStack(parser);
-
-    parser->stack = tmp;
-    parser->stackSize *= newSize;
-}
-
-void stackPush(struct EzJSONParser *parser, EzJSONBool bit)
-{
-    if (parser->stackTop == parser->stackSize * 8u)
-    {
-        growStack(parser);
-    }
-
-    const unsigned stackByte = parser->stackTop / 8u;
-    const unsigned stackBit  = parser->stackTop % 8u;
-
-    if (bit)
-    {
-        parser->stack[stackByte] |= (1u << stackBit);
-    }
-    else
-    {
-        parser->stack[stackByte] &= ~(1u << stackBit);
-    }
-    parser->stackTop++;
-}
-
-int stackPop(struct EzJSONParser *parser)
-{
-    if (parser->stackTop > 0)
-    {
-        parser->stackTop--;
-        return 0;
-    }
-    return -1;
-}
-
-EzJSONBool stackTop(struct EzJSONParser *parser)
-{
-    const unsigned stackByte = (parser->stackTop - 1) / 8u;
-    const unsigned stackBit  = (parser->stackTop - 1) % 8u;
-    return (parser->stack[stackByte] & (1u << stackBit)) > 0;
 }
 
 int peek(struct EzJSONParser *parser)
@@ -551,32 +445,18 @@ int readValue(struct EzJSONParser *parser)
 
 // Interface
 
-struct EzJSONParser *EzJSONParserCreate(struct EzJSONParserSettings *settings)
+void *EzJSONParserInit(struct EzJSONParser *parser)
 {
-    struct EzJSONParser *parser;
-    if (settings->allocate_memory)
-    {
-        parser = (struct EzJSONParser *)settings->allocate_memory(
-            settings->userdata, sizeof(struct EzJSONParser));
-    }
-    else
-    {
-        parser = malloc(sizeof(struct EzJSONParser));
-    }
-    memcpy(&parser->settings, settings, sizeof(struct EzJSONParserSettings));
-
     parser->buffer     = parser->inlineBuffer;
     parser->bufferSize = EZJSON_PARSER_INLINE_BUFFER;
     parser->bufferPos  = 0;
-    parser->stack      = parser->inlineStack;
-    parser->stackSize  = EZJSON_PARSER_STACK_SIZE;
-    parser->stackTop   = 0;
-    parser->peeked     = '\0';
-    parser->hasPeeked  = 0;
-    parser->hasToken   = 0;
-    parser->state      = EZ_PS_EXPECT_VALUE;
-    parser->line       = 1;
-    parser->pos        = 0;
+    stack_init(&parser->stack);
+    parser->peeked    = '\0';
+    parser->hasPeeked = 0;
+    parser->hasToken  = 0;
+    parser->state     = EZ_PS_EXPECT_VALUE;
+    parser->line      = 1;
+    parser->pos       = 0;
     return parser;
 }
 
@@ -587,13 +467,13 @@ struct EzJSONToken *EzJSONParserToken(struct EzJSONParser *parser)
 
 enum EzJSONParserState expectedAfterValue(struct EzJSONParser *parser)
 {
-    if (parser->stackTop == 0)
+    if (stack_empty(&parser->stack))
     {
         return EZ_PS_EXPECT_EOF;
     }
     else
     {
-        if (stackTop(parser) == 0)
+        if (stack_top(&parser->stack) == STACK_BIT_ARRAY)
         {
             return EZ_PS_EXPECT_ARR_END | EZ_PS_EXPECT_SEQ_SEP;
         }
@@ -613,9 +493,9 @@ void nextToken(struct EzJSONParser *parser)
             if (parser->peeked == ']')
             {
                 skip(parser, ']');
-                stackPop(parser);
                 setTokenSimple(parser, EZJ_TOKEN_ARR_END);
                 parser->state = expectedAfterValue(parser);
+                stack_pop(&parser->stack);
                 return;
             }
         }
@@ -624,9 +504,9 @@ void nextToken(struct EzJSONParser *parser)
             if (parser->peeked == '}')
             {
                 skip(parser, '}');
-                stackPop(parser);
                 setTokenSimple(parser, EZJ_TOKEN_OBJ_END);
                 parser->state = expectedAfterValue(parser);
+                stack_pop(&parser->stack);
                 return;
             }
         }
@@ -636,8 +516,9 @@ void nextToken(struct EzJSONParser *parser)
             {
                 skip(parser, ',');
                 setTokenSimple(parser, EZJ_TOKEN_SEQ_SEP);
-                parser->state = (stackTop(parser) == 0) ? EZ_PS_EXPECT_VALUE
-                                                        : EZ_PS_EXPECT_OBJ_KEY;
+                parser->state = (stack_top(&parser->stack) == STACK_BIT_ARRAY)
+                                    ? EZ_PS_EXPECT_VALUE
+                                    : EZ_PS_EXPECT_OBJ_KEY;
                 return;
             }
         }
@@ -671,11 +552,21 @@ void nextToken(struct EzJSONParser *parser)
                 switch (parser->token.type)
                 {
                 case EZJ_TOKEN_ARR_BEGIN:
-                    stackPush(parser, 0);
+                    stack_push(
+                        &parser->stack,
+                        STACK_BIT_ARRAY,
+                        parser->settings.userdata,
+                        parser->settings.allocate_memory,
+                        parser->settings.free_memory);
                     parser->state = EZ_PS_EXPECT_VALUE;
                     return;
                 case EZJ_TOKEN_OBJ_BEGIN:
-                    stackPush(parser, 1);
+                    stack_push(
+                        &parser->stack,
+                        STACK_BIT_OBJECT,
+                        parser->settings.userdata,
+                        parser->settings.allocate_memory,
+                        parser->settings.free_memory);
                     parser->state = EZ_PS_EXPECT_OBJ_KEY | EZ_PS_EXPECT_OBJ_END;
                     return;
                 default:
@@ -706,17 +597,10 @@ void EzJSONParserNext(struct EzJSONParser *parser)
 void EzJSONParserDestroy(struct EzJSONParser *parser)
 {
     freeBuffer(parser);
-    freeStack(parser);
-
-    if (parser->settings.free_memory)
-    {
-        parser->settings.free_memory(
-            parser->settings.userdata, parser, sizeof(struct EzJSONParser));
-    }
-    else
-    {
-        free(parser);
-    }
+    stack_destroy(
+        &parser->stack,
+        parser->settings.userdata,
+        parser->settings.free_memory);
 }
 
 EzJSONBool EzJSONParserHasError(struct EzJSONParser *parser)

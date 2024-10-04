@@ -18,9 +18,17 @@ typedef float EzJSONNumber;
 typedef char EzJSONBool;
 #endif // !EZJSON_BOOL
 
-    // Char should be set to the next input. Return 0 on success, non-zero on
-    // error or EOF
-    typedef int (*EzJSONGetChar)(void *, char *);
+#define EZJSON_INLINE_STACK_SIZE 8
+
+    typedef char EzJSONStackChunk;
+
+    struct EzJSONBitStack
+    {
+        EzJSONStackChunk inlineData[EZJSON_INLINE_STACK_SIZE];
+        EzJSONStackChunk *data;
+        unsigned size;
+        unsigned top;
+    };
 
     // Optional allocator overrides
     typedef char *(*EzJSONAlloc)(void *userdata, unsigned size);

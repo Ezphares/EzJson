@@ -3,12 +3,19 @@
 
 #include "ezjson_common.h"
 
+#ifndef EZJSON_PARSER_INLINE_BUFFER
+#define EZJSON_PARSER_INLINE_BUFFER 128
+#endif // !EZJSON_INLINE_BUFFER
+
 #ifdef __cplusplus
 extern "C"
 {
 #endif // __cplusplus
 
-    struct EzJSONParser;
+    // Char should be set to the next input. Return 0 on success, non-zero on
+    // error or EOF
+    typedef int (*EzJSONGetChar)(void *, char *);
+
     struct EzJSONParserSettings
     {
         void *userdata;              // Optional, passed to all callbacks
@@ -51,9 +58,33 @@ extern "C"
         };
     };
 
+    struct EzJSONParser
+    {
+        struct EzJSONParserSettings settings;
+
+        char inlineBuffer[EZJSON_PARSER_INLINE_BUFFER];
+        unsigned bufferSize;
+        char *buffer;
+        unsigned bufferPos;
+
+        struct EzJSONBitStack stack;
+
+        enum EzJSONParserState state;
+
+        struct EzJSONToken token;
+
+        char peeked;
+
+        char hasPeeked;
+        char hasToken;
+
+        unsigned line;
+        unsigned pos;
+    };
+
     /// Initialize a new parser from the provided settings. The settings will be
     /// copied to internal memory.
-    struct EzJSONParser *EzJSONParserCreate(struct EzJSONParserSettings *);
+    void *EzJSONParserInit(struct EzJSONParser *);
 
     /// Step the parser to the next token. Must be called once before the token
     /// becomes valid,

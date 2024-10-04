@@ -16,23 +16,37 @@ extern "C"
 {
 #endif // __cplusplus
 
-    // struct EzJSONReader
-    //{
-    //     void (*onObjectBegin)(void *);
-    //     void (*onObjectEnd)(void *);
-    //     void (*onArrayBegin)(void *);
-    //     void (*onArrayEnd)(void *);
+    struct EzJsonWriterSettings
+    {
+        void *userdata;
+        EzJSONAlloc allocate_memory; // Optional, uses malloc() if not set.
+        EzJSONFree free_memory;      // Optional, uses free() if not set
+    };
 
-    //    void (*onKey)(void *, const char *, unsigned);
+    struct EzJSONWriter
+    {
+        struct EzJsonWriterSettings settings;
 
-    //    void (*onNull)(void *);
-    //    void (*onNumber)(void *, EzJSONNumber);
-    //    void (*onBool)(void *, EzJSONBool);
-    //    void (*onString)(void *, const char *, unsigned);
-    //    void (*onError)(void *);
+        void (*writeBuffer)(void *, const char *, unsigned);
+        void (*writeError)(struct EzJSONWriter *writer);
 
-    //    void *userdata;
-    //};
+        enum EzJSONWriteError error;
+
+        int writestate;
+        char buffer[EZJSON_WRITE_BUFFER_SIZE];
+        unsigned bufferPos;
+
+#if defined(EZJSON_CHECKED_WRITE)
+        struct EzJSONBitStack stack;
+#endif
+
+#if defined(EZJSON_PRETTY)
+        char indentChar;
+        int indentCount;
+        int prettyLevel;
+        EzJSONBool prettyEnabled;
+#endif
+    };
 
     enum EzJSONWriteError
     {
@@ -43,35 +57,8 @@ extern "C"
         EZ_WE_WAS_OBJECT,     // Got EndArray while writing object
     };
 
-    struct EzJSONWriter
-    {
-        void *userdata;
-
-        void (*writeBuffer)(void *, const char *, unsigned);
-        void (*writeError)(struct EzJSONWriter *writer);
-
-        enum EzJSONWriteError error;
-
-        struct
-        {
-            int writestate;
-            char buffer[EZJSON_WRITE_BUFFER_SIZE];
-            unsigned bufferPos;
-#if defined(EZJSON_CHECKED_WRITE)
-            unsigned char stack[EZJSON_WRITER_STACK_SIZE];
-            int stacksize;
-            int stackpos;
-#endif
-#if defined(EZJSON_PRETTY)
-            char indentChar;
-            int indentCount;
-            int prettyLevel;
-            EzJSONBool prettyEnabled;
-#endif
-        } state;
-    };
-
-    void EzJSONInitWriter(struct EzJSONWriter *writer);
+    void EzJSONWriterInit(struct EzJSONWriter *);
+    void EzJSONWriterDestroy(struct EzJSONWriter *);
 
     void
     EzJSONEnablePrettyPrinting(struct EzJSONWriter *writer, EzJSONBool enabled);
